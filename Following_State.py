@@ -175,7 +175,7 @@ class FollowingState(State):
 
             
                 
-            else: # we already have a previous speed so we regulate it
+            if self.last_twist is not None: # we already have a previous speed so we regulate it
                 
                 if self.last_twist.linear.x < cmd.linear.x and cmd.linear.x < FREEWAY_LINEAR_SPEED: # increment speed
                     cmd.linear.x = self.last_twist.linear.x + self.kp['linear']
