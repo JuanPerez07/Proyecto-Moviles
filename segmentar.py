@@ -37,7 +37,7 @@ class Recon:
         return cv.resize(self.frame, new_size, interpolation= cv.INTER_CUBIC)
         
     def getFrameShape(self):
-		return self.frame.shape
+        return self.frame.shape
     
     def setFrame(self, frame): # set the frame while resizing by interpolation
         self.frame = np.array(frame)
