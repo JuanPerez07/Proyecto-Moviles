@@ -11,10 +11,13 @@ SIFT_MATCH_THRESHOLD = 0.75 # threshold to consider matching between keypoints
 DATA_DIR = os.path.join(os.getcwd(), "data") # data directory with the query image
 QUERY_IMG = 'query_bvb.jpg' # query image of the target to recon by the robot
 QUERY_PATH = os.path.join(DATA_DIR, QUERY_IMG)
-
+# auxiliar variable to make use of sift descrip. and query, make True if so for waffle sim
+SIFT = False
+# number of pixels which match a mask of empty objects (determined experimentally)
+MIN_PIXELS = 65962
 #class Recon: #Recognize and segment
 class Recon:
-    def __init__(self, color, myWebcam=False, tb2 = True):
+    def __init__(self, color, myWebcam=False, tb2=False):
         self.connected = False
         self.webcam = myWebcam
         self.color = color 
@@ -24,15 +27,20 @@ class Recon:
             if self.open:
                 self.connected = True
         self.frame = None
+	self.tb2 = tb2
         self.singleImg = False # to process only an image
-        self.tb2 = tb2 # to use with tb2 real
         self.query_threshold = MIN_MATCHES # number of keypoints required to assert a match
+        self.SIFT = SIFT # to use the descriptor
+        self.floor_obstacles = False # checks any given obstacles in an area
 
     def resize(self, new_size): # resize the frame using bicubic interpolation
         return cv.resize(self.frame, new_size, interpolation= cv.INTER_CUBIC)
-
+        
+    def getFrameShape(self):
+		return self.frame.shape
+    
     def setFrame(self, frame): # set the frame while resizing by interpolation
-        self.frame = frame
+        self.frame = np.array(frame)
 
     # color-based segmentation: https://omes-va.com/deteccion-de-colores2/
     def detect_color(self, frame):
@@ -91,25 +99,25 @@ class Recon:
         for c in contours:
             x, y, w, h = cv.boundingRect(c)
             # heuristics
-            """
-            # get the largest bbox due to mask segmented
-            if w * h > max_area: 
-                pos  = (x,y)
-                size = (x + w, y + h)
-                max_area = w * h
-            """ 
-            # check if most of the keypoints detected are in the bbox
-            xmin, ymin = x, y
-            xmax, ymax = x + w, y + h
-            counter = 0 # counter of the keypoints inside the bbox 
-            for kp in self.keyp_list: # keyp_list is a list of tuples (x, y)
-                kp_x, kp_y = kp
-                if kp_x > xmin and kp_x < xmax and kp_y > ymin and kp_y < ymax:
-                    counter += 1
-            if counter > most_kp:
-                pos  = (x,y)
-                size = (x + w, y + h)
-                most_kp = counter # added
+            if not self.SIFT:
+                # get the largest bbox due to mask segmented
+                if w * h > max_area: 
+                    pos  = (x,y)
+                    size = (x + w, y + h)
+                    max_area = w * h
+            else:
+                # check if most of the keypoints detected are in the bbox
+                xmin, ymin = x, y
+                xmax, ymax = x + w, y + h
+                counter = 0 # counter of the keypoints inside the bbox 
+                for kp in self.keyp_list: # keyp_list is a list of tuples (x, y)
+                    kp_x, kp_y = kp
+                    if kp_x > xmin and kp_x < xmax and kp_y > ymin and kp_y < ymax:
+                        counter += 1
+                if counter > most_kp:
+                    pos  = (x,y)
+                    size = (x + w, y + h)
+                    most_kp = counter # added
         # draw the bounding box on the img
         cv.rectangle(img, pos, size, (0,0,255), 2)
         # bbox info
@@ -135,7 +143,65 @@ class Recon:
             #print("No se detectaron contornos")
             return None,None
         return img_array, bbox_info
+    
+    # checks if there are any obstacles in the way
+    def floor_plane_obstacles(self):
+        return self.floor_obstacles
 
+    # draws the trapezoid area for obstacle detection
+    def draw_trapezoid(self):
+        if self.frame is None:
+            rospy.loginfo("Could not draw the trapezoid used for floor plane extraction")
+            return None
+	    # draws into the given frame the trapezoid used for floor plane extraction
+        res = self.frame.copy()
+	    # define the points for the trapezoid
+        height, width = res.shape[:2]
+	    # each point is given as (x,y)
+        top_width = int(width/4)  # Top side of the trapezoid is third the image width
+        bottom_width = int(width * 0.9)  # Bottom side of the trapezoid is 90% of the image width
+        top_y = int((height*6)/10)  # Y-coordinate for the top of the trapezoid
+        bottom_y = int(height)  # Y-coordinate for the bottom of the trapezoid
+
+        top_left = ((width - top_width) // 2, top_y)
+        top_right = ((width + top_width) // 2, top_y)
+        bottom_left = ((width - bottom_width) // 2, bottom_y)
+        bottom_right = ((width + bottom_width) // 2, bottom_y)
+		
+		# create a mask and trapezoid by points
+        mask = np.zeros_like(res, dtype=np.uint8)
+        trapezoid_points = np.array([top_left, top_right, bottom_right, bottom_left])
+        # fill the poligon in yellow (R=0, G=255, B=255)
+        cv.fillPoly(mask, [trapezoid_points], (0,255,255))
+		# combine both trapezoid mask with original frame 
+        trap = cv.bitwise_and(res, mask)
+        # interpolate the trapezoid to a squared view 
+        dst_shape = (int(width), int(height))
+        src = np.full(dst_shape, 0)
+        src = np.zeros_like(src, dtype=np.uint8) # copy mask 
+        # points in src image defining the points to proyect (inputs) and outputs in the dst image
+        input_pts = np.array([top_left, top_right, bottom_right, bottom_left], dtype=np.float32) 
+        output_pts = np.array([[0,0], [dst_shape[1] -1, 0], [dst_shape[1] -1, dst_shape[0] -1], [0, dst_shape[0]]], dtype=np.float32)
+        # transformation matrix
+        mt = cv.getPerspectiveTransform(input_pts, output_pts)
+        # perform the perspective matrix wrap
+        dst = cv.warpPerspective(trap, mt, dst_shape, flags=cv.INTER_LINEAR)
+        # binarize the gray img -> pursue object detection by edges
+        dst_gray = cv.cvtColor(dst, cv.COLOR_BGR2GRAY)
+        # perform gaussian adaptive threshold to outline edges in the trapezoid area
+        det = cv.adaptiveThreshold(dst_gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
+        # count the non zero pixels
+        pixels = cv.countNonZero(det)
+        # if the mask loses positive pixels it means there is an object in the trapezoid area
+        if pixels < MIN_PIXELS:
+            self.floor_obstacles = True
+            #print("Obstacles in the way")
+        else:
+            self.floor_obstacles = False
+            #print("Clear way")
+        # return the trapezoid on the frame drawn, the proyection to a rectangle from it, the mask of the object detected
+        return trap, dst, det
+		
     # reads from the WebCam and outputs the live feed + detection feed
     def read_from_webcam(self, sift=True, query_path=None): 
         if not self.connected:
@@ -183,7 +249,7 @@ class Recon:
     WAFFLE camera read method
     """
     # read the onboard waffle camera
-    def read_from_wafflecam(self, sift=True, query_path=QUERY_PATH): 
+    def read_from_wafflecam(self, query_path=QUERY_PATH): 
         if self.frame is None:
             print("Error: La camara no esta conectada")
             return
@@ -195,21 +261,25 @@ class Recon:
         mask, erosion, segmented = self.detect_color(self.frame)
         # try matching query and current frame
         match = None # image of the keypoints detected in current frame and query (target)
-        if sift:
+        if self.SIFT:
             match = self.matchingSIFT(query_path) # returns image with the query and current frame matching keypoints
         # draw bounding box of the largest contour detected (if there is no detection returns none, none)
         bbox, bbox_info = self.draw_bounding_box(self.frame, erosion)
-
+        # draw the trapezoid for the floor plane extraction
+        trap, proy, det = self.draw_trapezoid()
         try:
             # show the current video frames
-            #cv.imshow('Erosion applied to mask', erosion)
-            #cv.imshow('Mask image', mask)              
-            cv.imshow('Bounding box detectado', bbox)
+            cv.imshow('Floor plane extraction', trap)
+            cv.imshow('Proyection of the trapezoid', proy)
+            cv.imshow('Adaptive Gaussian Thresholding', det)
+
+            if bbox is not None:              
+                cv.imshow('Bounding box detected', bbox)
             if match is not None:
                 cv.imshow('Query matching', match)
 
         except Exception as e:
-            print("Error al mostrar imagen con bounding box: ", e)
+            print("Error showing video frames in read_from_wafflecam: ", e)
             pass
 
         # exit using key
@@ -318,7 +388,7 @@ class Recon:
         #plt.show()
         
 
-"""    
+"""
 import os
 import argparse
 # ZONA DE PRUEBAS de SEGMENTACION
@@ -338,21 +408,19 @@ if __name__ == "__main__":
     if track_color not in ["red", "yellow"]:
         print("Color no soportado. Usa 'red' o 'yellow'.")
     else:
-        print(f"Realizando seguimiento al color: {track_color}")
+        print("Realizando seguimiento al color: ", track_color)
 
-    recon = Recon(track_color, myWebcam=True)
+    recon = Recon(track_color)
     DATA_DIR = os.path.join(os.getcwd(), "data")
     # imagenes del supuesto frame actual y el objetivo
     img = 'pasillo3.jpg'
     query = 'query_bvb.jpg'
     img_path = os.path.join(DATA_DIR, img)
     query_path = os.path.join(DATA_DIR, query)
-    # reconocer matches mediante SITF (SURF esta pantentado pero es mas eficiente computacionalmente)
-    #recon.matchingSIFT(img_path, query_path)
-    recon.read_from_webcam(True, query_path)
+    #TODO: Reconocer matches mediante SITF (SURF esta pantentado pero es mas eficiente computacionalmente)
+    #recon.read_from_webcam(True, query_path)
     
-    
-    # procesar imagen de un directorio
+    #TODO: Procesar imagen de un directorio
     #recon.process_single_img(os.path.join(DATA_DIR, img_name))
-    
 """
+    
