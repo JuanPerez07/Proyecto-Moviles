@@ -27,7 +27,7 @@ class Recon:
             if self.open:
                 self.connected = True
         self.frame = None
-	self.tb2 = tb2
+        self.tb2 = tb2
         self.singleImg = False # to process only an image
         self.query_threshold = MIN_MATCHES # number of keypoints required to assert a match
         self.SIFT = SIFT # to use the descriptor
