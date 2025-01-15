@@ -30,7 +30,7 @@ class VFHPlus:
         self.min_angle = min_angle  # Angle gap between beams [degrees]
         self.min_valley_length = int(MIN_VALLEY_ANGLE // np.radians(self.min_angle)) # scalar int
         self.last_dir = last_dir # last steering direction chosen during VFH+ run
-        self.direction = None # best steering direction in radians
+        self.direction = 0 # best steering direction in radians
         self.hist = None # polar histogram
         self.masked_hist = [] # masked polar histogram
         self.radio_enlargement = ROBOT_RADIUS # radio enlargement of the obstacles

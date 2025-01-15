@@ -10,7 +10,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import argparse
 from sensor_msgs.msg import Image, LaserScan
-from std_msgs.msg import String, Int32
+from std_msgs.msg import String, Int32, Float32
 from geometry_msgs.msg import Twist
 
 from segmentar import Recon
@@ -31,7 +31,7 @@ class Tracking:
         # obstacles checker 
         self.obstaclesPub = rospy.Publisher(OBS_TOPIC, String, queue_size=5)
         # direction publisher (Int32)
-        self.pubTarget = rospy.Publisher(TARGET_TOPIC, Int32, queue_size=8)
+        self.pubTarget = rospy.Publisher(TARGET_TOPIC, Float32, queue_size=8)
 
     # callback of the frame received
     def frame_cb(self, msg):
@@ -51,7 +51,7 @@ class Tracking:
             self.obstaclesPub.publish("true")
         else: 			
             self.obstaclesPub.publish("false")
-        
+        direction = 0
 #       if matching is correct then person is detected
         if bbox_info[0][0] != 0 and bbox_info[1][0] != 0: # person is detected
             self.personPub.publish("detected")
@@ -70,7 +70,7 @@ class Tracking:
             else:
                 self.commandPub.publish("GO")
             # publish the bbox target direction according to a 180 FOV
-            direction = 0
+            
             if x == width // 2:
                 self.pubTarget.publish(direction)			    	
             else:
@@ -81,7 +81,7 @@ class Tracking:
                     direction = (x // width) * 90					
                     self.pubTarget.publish(direction)									
         else:
-            self.pubTarget.publish(0)
+            self.pubTarget.publish(direction)
             self.commandPub.publish("STOP")
             self.personPub.publish("not_detected")
         

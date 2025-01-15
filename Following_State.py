@@ -9,14 +9,14 @@ import math
 from smach import State, StateMachine
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
-from std_msgs.msg import String, Int32
+from std_msgs.msg import String, Int32, Float32
 from vfh_plus import *
 FREEWAY_LINEAR_SPEED = 0.2
 FREEWAY_ANGULAR_SPEED = 0.5
 FINDING_ANGULAR_SPEED = 0.25
 SAFETY_DIST = 0.75 # secure distance from frontal obstacles
 GAMMA = 5 # constant to regulate speed increase/ decrease over time
-
+REDUCTION_ANG_SPEED= 0.2
 SCAN_TOPIC = '/scan'
 COMMAND_TOPIC = '/command'
 PERSON_TOPIC = '/person_detected'
@@ -38,12 +38,12 @@ class FollowingState(State):
         self.commandSub = rospy.Subscriber(COMMAND_TOPIC, String, self.command_cb )
         self.scanSub = rospy.Subscriber(SCAN_TOPIC, LaserScan, self.laser_cb)
         self.obsSub = rospy.Subscriber(OBS_TOPIC, String, self.obs_cb)  
-        self.targetSub = rospy.Subscriber(TARGET_TOPIC, Int32, self.target_cb)
+        self.targetSub = rospy.Subscriber(TARGET_TOPIC, Float32, self.target_cb)
         self.lastTwistSub = rospy.Subscriber('/cmd_vel', Twist, self.last_velocity_cb)
         # attributes
         self.person = False
         self.command = None
-        self.target_direction = None
+        self.target_direction = 0
         # freeWay linear: usar profundidad camara o dist laser frontal
         #TODO freeWay angular: usar desplazamiento bbox
         self.speed = { 
@@ -128,8 +128,9 @@ class FollowingState(State):
         
         print('Introduzca el comando <<Entrega>> para cambiar de modo')
         self.correct = False
+        linear = 0
         #Wait for correct password while following the person
-        while not self.correct:# and self.person:
+        while not self.correct and self.person:
             # Check for person
             if not self.obstacle: # si no hay obstaculo seguir a la persona
                 if self.command == "GO":
@@ -144,48 +145,49 @@ class FollowingState(State):
                 if self.command == "STOP":
                     cmd.linear.x = 0.0
                     cmd.angular.z = 0.0
+                    
+                if self.last_twist is not None: # we already have a previous speed so we regulate it
+                    if self.last_twist.linear.x < linear and linear < FREEWAY_LINEAR_SPEED: # increment speed
+                        cmd.linear.x = self.last_twist.linear.x + self.kp['linear']
+                    if self.last_twist.linear.x > linear and linear > 0: # decrease
+                        cmd.linear.x = self.last_twist.linear.x - self.kp['linear']
+                else:
+                    cmd.linear.x = self.speed['freeWay']['linear_speed']
+    
             else: # there is obs so we stop
                 omega = 0 # angular velocity
                 target = self.target_direction # original target
                 last_dir = 0
-                speed_directions = [] # list of inverse speeds taken to regain the original target       
+                #speed_directions = [] # list of inverse speeds taken to regain the original target       
                 while(self.obstacle):
                     print("Performing VFH_PLUS")
-                    linear = 0
                     # compute the initial histogram and plot it
-                    if self.laser_readings is not None:
-                        if self.target_direction is None:
-                            self.target_direction = last_dir
+                    if self.laser_readings is not None:                       
                         print("Target (degrees) : ", self.target_direction)
                         vfh = VFHPlus(self.laser_readings, self.angle_inc, self.max_angle, last_dir)
-                        vfh.compute_direction(target_direction)
+                        vfh.compute_direction(self.target_direction)
                         vfh.plot_histogram(vfh.hist)
                         direct = vfh.getDirection() 
                         if direct is not None:
                             last_dir = direct # renew the last direction taken
                             target = - direct # new target as we moved away from it
                             print("Selected direction in degrees: ", np.degrees(direct))
-                            omega = - direct * FREQ * 0.5 # angular speed chosen
-                            speed_directions.append(-omega) # append the opposite direction speed
+                            omega = - direct * FREQ * REDUCTION_ANG_SPEED # angular speed chosen
+                            #speed_directions.append(-omega) # append the opposite direction speed
                         if omega < 0.00001:
-                            linear = FREEWAY_LINEAR_SPEED
                             omega = 0  
                     # assign the speeds        
-                    cmd.linear.x = linear
                     cmd.angular.z = omega
+                    
+                    if self.last_twist is not None: # we already have a previous speed so we regulate it
+                        if self.last_twist.linear.x < self.speed['freeWay']['linear_speed']: # increment speed
+                            cmd.linear.x = self.last_twist.linear.x + self.kp['linear']
+                        if self.last_twist.linear.x > self.speed['freeWay']['linear_speed']: # decrease
+                            cmd.linear.x = self.last_twist.linear.x - self.kp['linear']
+                    else:
+                        cmd.linear.x = self.speed['freeWay']['linear_speed']
                     # publish speeds
-                    self.speedPub.publish(cmd)    
-
-            
-                
-            if self.last_twist is not None: # we already have a previous speed so we regulate it
-                
-                if self.last_twist.linear.x < cmd.linear.x and cmd.linear.x < FREEWAY_LINEAR_SPEED: # increment speed
-                    cmd.linear.x = self.last_twist.linear.x + self.kp['linear']
-                if self.last_twist.linear.x > cmd.linear.x and cmd.linear.x > 0: # decrease
-                    cmd.linear.x = self.last_twist.linear.x - self.kp['linear']
-            # publish the speeds
-            self.speedPub.publish(cmd)
+                    self.speedPub.publish(cmd)
             
             rate.sleep()
             self.last_twist = None # reset for the next cycle
@@ -199,10 +201,10 @@ class FollowingState(State):
             #Publisher to None
             self.pub = None
             return "Delivering"
-        """else:
+        else:
             # Person lost, changing to Finding State
             print('Voy a buscar')
-            return 'find_person'"""
+            return 'find_person'
 
 
     

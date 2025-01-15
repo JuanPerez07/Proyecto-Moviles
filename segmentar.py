@@ -6,7 +6,7 @@ import os
 import matplotlib.pyplot as plt
 from enum import Enum
 
-MIN_MATCHES = 15 # minimum number of matches to the query to consider it good
+MIN_MATCHES = 20 # minimum number of matches to the query to consider it good
 SIFT_MATCH_THRESHOLD = 0.75 # threshold to consider matching between keypoints
 DATA_DIR = os.path.join(os.getcwd(), "data") # data directory with the query image
 QUERY_IMG = 'query_bvb.jpg' # query image of the target to recon by the robot
