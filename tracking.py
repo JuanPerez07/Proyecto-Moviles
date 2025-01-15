@@ -81,6 +81,7 @@ class Tracking:
                     direction = (x // width) * 90					
                     self.pubTarget.publish(direction)									
         else:
+            self.pubTarget.publish(0)
             self.commandPub.publish("STOP")
             self.personPub.publish("not_detected")
         

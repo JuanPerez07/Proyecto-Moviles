@@ -16,6 +16,7 @@ GAMMA = 5 # constant to regulate speed increase/ decrease over time
 SCAN_TOPIC = '/scan'
 SPEED_TOPIC = '/mobile_base/commands/velocity'
 TARGET_TOPIC = '/target'
+OBS_TOPIC='/obstacle'
 # frequency of reading
 FREQ = 10 # Hz
 # class-State Finding -> makes the robot rotate around itself until he detects the person to then follow
@@ -72,7 +73,7 @@ class FindingState(State):
                         self.theta = - omega # angular speed chosen
                     else:
                     """
-                        self.theta = - direct * 0.5 * FREQ
+                    self.theta = - direct * 0.5 * FREQ
                 # no direction chosen so we move to the target
                 else:
                     self.theta = - self.target_direction * FREQ * 0.2   					

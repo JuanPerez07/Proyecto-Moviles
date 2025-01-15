@@ -14,10 +14,11 @@ QUERY_PATH = os.path.join(DATA_DIR, QUERY_IMG)
 # auxiliar variable to make use of sift descrip. and query, make True if so for waffle sim
 SIFT = False
 # number of pixels which match a mask of empty objects (determined experimentally)
-MIN_PIXELS = 65962
+#MIN_PIXELS = 65962 in gazebo
+MIN_PIXELS = 63000
 #class Recon: #Recognize and segment
 class Recon:
-    def __init__(self, color, myWebcam=False, tb2=False):
+    def __init__(self, color, myWebcam=False, tb2=True):
         self.connected = False
         self.webcam = myWebcam
         self.color = color 
@@ -160,7 +161,7 @@ class Recon:
 	    # each point is given as (x,y)
         top_width = int(width/4)  # Top side of the trapezoid is third the image width
         bottom_width = int(width * 0.9)  # Bottom side of the trapezoid is 90% of the image width
-        top_y = int((height*6)/10)  # Y-coordinate for the top of the trapezoid
+        top_y = int((height*8)/10)  # Y-coordinate for the top of the trapezoid
         bottom_y = int(height)  # Y-coordinate for the bottom of the trapezoid
 
         top_left = ((width - top_width) // 2, top_y)
@@ -192,6 +193,7 @@ class Recon:
         det = cv.adaptiveThreshold(dst_gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY, 11, 2)
         # count the non zero pixels
         pixels = cv.countNonZero(det)
+        #print(pixels)
         # if the mask loses positive pixels it means there is an object in the trapezoid area
         if pixels < MIN_PIXELS:
             self.floor_obstacles = True

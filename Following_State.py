@@ -10,7 +10,7 @@ from smach import State, StateMachine
 from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String, Int32
-
+from vfh_plus import *
 FREEWAY_LINEAR_SPEED = 0.2
 FREEWAY_ANGULAR_SPEED = 0.5
 FINDING_ANGULAR_SPEED = 0.25
@@ -21,7 +21,8 @@ SCAN_TOPIC = '/scan'
 COMMAND_TOPIC = '/command'
 PERSON_TOPIC = '/person_detected'
 SPEED_TOPIC = "/mobile_base/commands/velocity"
-
+OBS_TOPIC='/obstacle'
+TARGET_TOPIC='/target'
 FREQ = 10 # Hz
 # Topics to communicate with the user
 TOPIC_NAME = "USER_INPUT"
@@ -153,9 +154,11 @@ class FollowingState(State):
                     linear = 0
                     # compute the initial histogram and plot it
                     if self.laser_readings is not None:
-                        print("Target (degrees) : ", target)
+                        if self.target_direction is None:
+                            self.target_direction = last_dir
+                        print("Target (degrees) : ", self.target_direction)
                         vfh = VFHPlus(self.laser_readings, self.angle_inc, self.max_angle, last_dir)
-                        vfh.compute_direction(target)
+                        vfh.compute_direction(target_direction)
                         vfh.plot_histogram(vfh.hist)
                         direct = vfh.getDirection() 
                         if direct is not None:

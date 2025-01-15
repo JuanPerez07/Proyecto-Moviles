@@ -18,8 +18,8 @@ import subprocess
 
 #transformation = get_trans()
 #home_coord_map = transform_point(transformation,0,0)
-subprocess.Popen(["roslaunch", "turtlebot3_slam", "turtlebot3_slam.launch", "slam_methods:=gmapping"])
-
+#subprocess.Popen(["roslaunch", "turtlebot3_slam", "turtlebot3_slam.launch", "slam_methods:=gmapping"])
+subprocess.Popen(["rosrun", "rviz", "rviz"])
 
 #Return home 
 goal = MoveBaseGoal()
