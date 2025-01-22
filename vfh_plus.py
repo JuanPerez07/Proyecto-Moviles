@@ -35,7 +35,7 @@ class VFHPlus:
         self.masked_hist = [] # masked polar histogram
         self.radio_enlargement = ROBOT_RADIUS # radio enlargement of the obstacles
         self.kdir = 0.75 # constant for cost function to ponder direction diff
-        self.ktarget = 0.5 # cosntant for cost function to ponder target 
+        self.ktarget = 0.5 # constant for cost function to ponder target 
         
 
     def getDirection(self): # returns in radians the steering direction selected
@@ -149,18 +149,16 @@ class VFHPlus:
         Enlarges the obstacles in function of their closeness to the robot 
         """
         masked_hist = []
-        #self.setThreshold(1) # set the threshold to transform into a binary histogram
         for e in self.hist:
             d, theta = e
             v = 1 if d <= self.threshold else 0
             masked_hist.append((v,theta))
         # convert to numpy array
         masked_hist = np.array(masked_hist, dtype=object)
-        
+        # create a copy to enlarge the obstacles closer to the robot
         self.masked_hist = masked_hist.copy()
-        # enlarge the obstacles according to their distance to the robot
+        # using the original histogram of distances
         for i,e in enumerate(self.hist):
-            # i is the index of the element e which is a tuple (magnitude, theta)
             d, theta = e
             # apply enlargement of obstacles if they are close enough (at a dist between [radio_enlargement, threshold])
             alpha = 0
@@ -187,8 +185,6 @@ class VFHPlus:
                 
             # update the current index
             self.masked_hist[i] = (v,theta)    
-        # overwrite the enlarged binary polar histogram
-        #self.masked_hist = hist.copy()
 
     def find_valleys(self):
         """
@@ -228,7 +224,7 @@ class VFHPlus:
         g_star = float('inf') # initially infinite
         for v in valleys: # consider the valleys with an angle minium of 
             n = len(v)
-            if n > self.min_valley_length: # if there is a valley of at least 30 degrees
+            if n > self.min_valley_length: # if there is a valley with enough opening
                 for index in v:
                     direction = self.masked_hist[index][1]
                     g = self.ktarget * target + self.kdir * abs(direction-self.last_dir)
