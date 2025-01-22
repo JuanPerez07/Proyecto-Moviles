@@ -1,9 +1,10 @@
-#ESTADO SEGUIMIENTO
+#FOLLOWING STATE
+#Library imports
 import rospy
 from std_msgs.msg import String
 import time
 import subprocess
-from NodoMensajes import commands
+from Nodo_Interfaz import commands
 import smach_ros
 import math
 from smach import State, StateMachine
@@ -11,12 +12,14 @@ from sensor_msgs.msg import LaserScan
 from geometry_msgs.msg import Twist
 from std_msgs.msg import String, Int32, Float32
 from vfh_plus import *
+# Movement parameters
 FREEWAY_LINEAR_SPEED = 0.2
 FREEWAY_ANGULAR_SPEED = 0.5
 FINDING_ANGULAR_SPEED = 0.25
 SAFETY_DIST = 0.75 # secure distance from frontal obstacles
 GAMMA = 5 # constant to regulate speed increase/ decrease over time
 REDUCTION_ANG_SPEED= 0.2
+# Communication topics
 SCAN_TOPIC = '/scan'
 COMMAND_TOPIC = '/command'
 PERSON_TOPIC = '/person_detected'
@@ -62,12 +65,8 @@ class FollowingState(State):
         self.laser_readings = None # array of distances read by the scan
         # close other plot 
         plt.close('all')        
-
-
-        self.Mailman = True
         self.correct = False
         self.comandoUser = commands['Following State']
-        self.start_slam()
 
     def last_velocity_cb(self, msg):
         self.last_twist = msg    
@@ -90,34 +89,18 @@ class FollowingState(State):
     # target direction callback
     def target_cb(self, msg):
         self.target_direction = msg.data
-        
+    # person detected callback  
     def person_cb(self, msg):
         self.person = msg.data == "detected"
-        
+    # user command callback
     def command_cb(self, msg):
         self.command = msg.data
     def order_callback(self,msg):
         if(msg.data == self.comandoUser):
-            #print('Voy a descansar')
-            #time.sleep(5)
             self.correct = True
 
-    #Start SLAM algorithim
-    def start_slam(self):
-        try:
-            rospy.loginfo("Iniciando SLAM con TurtleBot3...")
-            # Llama al comando roslaunch para iniciar SLAM
-            #subprocess.Popen(["roslaunch", "turtlebot3_slam", "turtlebot3_slam.launch", "slam_methods:=gmapping"])
-            #ESTE SE USA PARA EL ROBOT REAL
-            #subprocess.Popen(["rosrun", "rviz", "rviz"])
-            rospy.loginfo("SLAM iniciado exitosamente.")
-        except Exception as e:
-            rospy.logerr(f"Error al iniciar SLAM: {e}") 
-
-
-
     def execute(self,userdata):
-        #Launch subscriptor
+        #Launch user prompt subscriptor % state publisher
         self.prompt = rospy.Subscriber(TOPIC_NAME, String, self.order_callback)
         rate = rospy.Rate(10)
         self.pub = rospy.Publisher(STATE_TOPIC,String,queue_size=10,latch=True)
@@ -132,7 +115,7 @@ class FollowingState(State):
         #Wait for correct password while following the person
         while not self.correct and self.person:
             # Check for person
-            if not self.obstacle: # si no hay obstaculo seguir a la persona
+            if not self.obstacle: # No obstacle detected
                 if self.command == "GO":
                     cmd.linear.x = self.speed['freeWay']['linear_speed']
                     cmd.angular.z = 0.0
