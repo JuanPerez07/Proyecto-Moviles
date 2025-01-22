@@ -12,24 +12,24 @@ DATA_DIR = os.path.join(os.getcwd(), "data") # data directory with the query ima
 QUERY_IMG = 'query_bvb.jpg' # query image of the target to recon by the robot
 QUERY_PATH = os.path.join(DATA_DIR, QUERY_IMG)
 # auxiliar variable to make use of sift descrip. and query, make True if so for waffle sim
-SIFT = False
-# number of pixels which match a mask of empty objects (determined experimentally)
+SIFT = True
+# number of pixels which match a mask of a clear way (determined experimentally)
 #MIN_PIXELS = 65962 in gazebo
-MIN_PIXELS = 63000
-#class Recon: #Recognize and segment
+MIN_PIXELS = 63000 # inside the robotics lab
+# class to recognize and segment the target, also detects obstacles
 class Recon:
     def __init__(self, color, myWebcam=False, tb2=True):
-        self.connected = False
+        self.connected = False # webcam USB connection
         self.webcam = myWebcam
-        self.color = color 
+        self.color = color # color to segment
         if myWebcam: # for testing purposes based on camera without turtlebot
             self.cam = cv.VideoCapture(0) # camera input
             self.open = self.cam.isOpened()
             if self.open:
                 self.connected = True
-        self.frame = None
-        self.tb2 = tb2
-        self.singleImg = False # to process only an image
+        self.frame = None # current frame
+        self.tb2 = tb2 # checks if we use the real turtlebot2
+        self.singleImg = False # to process an image instead of frames
         self.query_threshold = MIN_MATCHES # number of keypoints required to assert a match
         self.SIFT = SIFT # to use the descriptor
         self.floor_obstacles = False # checks any given obstacles in an area
@@ -37,13 +37,13 @@ class Recon:
     def resize(self, new_size): # resize the frame using bicubic interpolation
         return cv.resize(self.frame, new_size, interpolation= cv.INTER_CUBIC)
         
-    def getFrameShape(self):
+    def getFrameShape(self): # returns the current frame shape
         return self.frame.shape
     
     def setFrame(self, frame): # set the frame while resizing by interpolation
         self.frame = np.array(frame)
 
-    # color-based segmentation: https://omes-va.com/deteccion-de-colores2/
+    # color-based segmentation
     def detect_color(self, frame):
         # gaussian blur to reduce noise
         blur = cv.GaussianBlur(frame, (3,3), 0)
@@ -82,7 +82,6 @@ class Recon:
         element = cv.getStructuringElement(erosion_type, size)
         # mask with erosion applied
         erosion = cv.erode(binary_mask, element)
-
         # mask applied to real RGB frame
         if binary_mask is not None:
             # bitwise-AND mask 
@@ -106,7 +105,7 @@ class Recon:
                     pos  = (x,y)
                     size = (x + w, y + h)
                     max_area = w * h
-            else:
+            else: # we are using the descriptor
                 # check if most of the keypoints detected are in the bbox
                 xmin, ymin = x, y
                 xmax, ymax = x + w, y + h
@@ -136,16 +135,13 @@ class Recon:
         img_contoured = frame.copy()
         img_array = np.asarray(img_contoured)
         try:
-            # draw in blue the contours
-            #cv.drawContours(img_array, contours, -1, (255,0,0), 2) # -1 dibuja todos los contornos, el tercer parametro es el color de los contornos en RGB y el ultimo la trasparencia
             # get the bounding box 
             bbox, bbox_info = self.getBoundingBox(img_array, contours)
         except Exception as e:
-            #print("No se detectaron contornos")
             return None,None
         return img_array, bbox_info
     
-    # checks if there are any obstacles in the way
+    # getter (boolean value) according to obstacles in the way
     def floor_plane_obstacles(self):
         return self.floor_obstacles
 
@@ -154,27 +150,27 @@ class Recon:
         if self.frame is None:
             rospy.loginfo("Could not draw the trapezoid used for floor plane extraction")
             return None
-	    # draws into the given frame the trapezoid used for floor plane extraction
+	# draws into the given frame the trapezoid used for floor plane extraction
         res = self.frame.copy()
-	    # define the points for the trapezoid
+	# define the points for the trapezoid
         height, width = res.shape[:2]
-	    # each point is given as (x,y)
+	# each point is given as (x,y)
         top_width = int(width/4)  # Top side of the trapezoid is third the image width
         bottom_width = int(width * 0.9)  # Bottom side of the trapezoid is 90% of the image width
         top_y = int((height*8)/10)  # Y-coordinate for the top of the trapezoid
         bottom_y = int(height)  # Y-coordinate for the bottom of the trapezoid
-
+        # define the points of the trapezoid area to scan
         top_left = ((width - top_width) // 2, top_y)
         top_right = ((width + top_width) // 2, top_y)
         bottom_left = ((width - bottom_width) // 2, bottom_y)
         bottom_right = ((width + bottom_width) // 2, bottom_y)
 		
-		# create a mask and trapezoid by points
+        # create a mask and trapezoid by points
         mask = np.zeros_like(res, dtype=np.uint8)
         trapezoid_points = np.array([top_left, top_right, bottom_right, bottom_left])
         # fill the poligon in yellow (R=0, G=255, B=255)
         cv.fillPoly(mask, [trapezoid_points], (0,255,255))
-		# combine both trapezoid mask with original frame 
+	# combine both trapezoid mask with original frame 
         trap = cv.bitwise_and(res, mask)
         # interpolate the trapezoid to a squared view 
         dst_shape = (int(width), int(height))
@@ -197,10 +193,10 @@ class Recon:
         # if the mask loses positive pixels it means there is an object in the trapezoid area
         if pixels < MIN_PIXELS:
             self.floor_obstacles = True
-            #print("Obstacles in the way")
+            
         else:
             self.floor_obstacles = False
-            #print("Clear way")
+            
         # return the trapezoid on the frame drawn, the proyection to a rectangle from it, the mask of the object detected
         return trap, dst, det
 		
@@ -215,14 +211,12 @@ class Recon:
             if not ret:
                 quit()
             # show height and width of the img: mi webcam {480, 640, 3}
-            #print(f"Height, width, channels: {frame.shape}")
             self.setFrame(frame)
             # segmentation based on color
             mask, erosion, segmented = self.detect_color(frame)
-
             # try matching query and current frame
             match = None # image of the keypoints detected in current frame and query (target)
-            if sift:
+            if self.SIFT:
                 match = self.matchingSIFT(query_path) # returns image with the query and current frame matching keypoints
 
             # draw bounding box of the largest contour detected around the keypoints given by SHIFT
@@ -230,15 +224,15 @@ class Recon:
 
             try:
                 # show the current video frames
-                cv.imshow('Erosion applied to mask', erosion)
+                #cv.imshow('Erosion applied to mask', erosion)
                 #cv.imshow('Mask image', mask)            
                 cv.imshow('Bounding box detectado', bbox)
-                if match is not None:
-                    cv.imshow('Query matching', match)
+                #if match is not None:
+                #    cv.imshow('Query matching', match)
             
             except Exception as e:
                 self.open = False
-                print("Error al mostrar mascara | imagen segmentada | matching query", e)  
+                print("Error showing the bounding box in the current frame", e)  
             # exit using key
             if cv.waitKey(25) & 0xFF == ord('q'):
                 self.open = False
@@ -255,10 +249,6 @@ class Recon:
         if self.frame is None:
             print("Error: La camara no esta conectada")
             return
-        #print("Processing frame...")  
-        # show height and width of the img: mi webcam {480, 640, 3}
-        #print(f"Height, width, channels: {frame.shape}")
-            
         # segmentation based on color
         mask, erosion, segmented = self.detect_color(self.frame)
         # try matching query and current frame
@@ -271,14 +261,14 @@ class Recon:
         trap, proy, det = self.draw_trapezoid()
         try:
             # show the current video frames
-            cv.imshow('Floor plane extraction', trap)
-            cv.imshow('Proyection of the trapezoid', proy)
-            cv.imshow('Adaptive Gaussian Thresholding', det)
+            #cv.imshow('Floor plane extraction', trap)
+            #cv.imshow('Proyection of the trapezoid', proy)
+            #cv.imshow('Adaptive Gaussian Thresholding', det)
 
             if bbox is not None:              
                 cv.imshow('Bounding box detected', bbox)
-            if match is not None:
-                cv.imshow('Query matching', match)
+            #if match is not None:
+            #    cv.imshow('Query matching', match)
 
         except Exception as e:
             print("Error showing video frames in read_from_wafflecam: ", e)
@@ -305,12 +295,12 @@ class Recon:
             # show the current video frames
             cv.imshow('Erosion applied to mask', erosion)
             cv.imshow('Mask image', mask)
-            cv.imshow('Bounding box detectado', bbox)
+            cv.imshow('Bounding box detected', bbox)
             cv.waitKey(0)
             cv.destroyAllWindows()
 
         except Exception as e:
-            print("Error al mostrar mascara y/o imagen segmentada: ", e)
+            print("Error showing mask | bbox: ", e)
             pass
 
 
@@ -330,12 +320,10 @@ class Recon:
         else: # reading from a camera
             frame = self.frame
             self.frame = cv.cvtColor(self.frame, cv.COLOR_BGR2GRAY) # frame to grayscale for SIFT
-            #frame = cv.cvtColor(self.frame, cv.COLOR_BGR2RGB) # copy of the crurent frame to show keypoints
             
         try:
             # load query img
             query = cv.imread(query_path) # query original
-            #query = cv.cvtColor(query, cv.COLOR_BGR2RGB)
             query_gray = cv.imread(query_path, cv.IMREAD_GRAYSCALE) # query grayscale for SIFT
         except Exception as e:
             print("Error: Query image path wrong: ", e)
@@ -346,30 +334,26 @@ class Recon:
             return None
 
         # create a SIFT descriptor
-        #hessianThreshold = 800 # entre 300 y 500 para regular numeros de keypoints detectados
         sift = cv.SIFT_create()
         # detect keypoints and calc descriptors
-        train_keyp, train_desc = sift.detectAndCompute(query_gray, None) # nuestro train -> query
-        test_keyp, test_desc = sift.detectAndCompute(self.frame, None) # nuestro test -> frame actual
+        train_keyp, train_desc = sift.detectAndCompute(query_gray, None) # train is actually -> query
+        test_keyp, test_desc = sift.detectAndCompute(self.frame, None) # test is actually -> current frame
         # do matching using FLANN and 2 neighbours
         neighbours = 2
         #FLANN parameters
         index_params = dict(algorithm = 1, tress = 5)
         search_params = dict(checks = 50)
-
         matcher = cv.FlannBasedMatcher(index_params, search_params)
-
         matches = matcher.knnMatch(train_desc, test_desc, k=neighbours)
-        # guardar los matches que cumplan cierta distancia
+        # save the matches whose distance is considered good enough
         good = list()
-        umbral = SIFT_MATCH_THRESHOLD # distancia umbral entre keyp para considerar buen match
+        umbral = SIFT_MATCH_THRESHOLD # threshold distance to consider a good match
         self.keyp_list = [] # list of keypoints coordinates in the current frame
         for m,n in matches:
             if m.distance < umbral* n.distance:
                 good.append(m)
 
         if len(good) > self.query_threshold:
-            print("Min number of matches is satisfied")
             # save keyp_list with the tuple coords of the keypoints to draw the bbox
             for match in good:
                 try:
@@ -378,17 +362,12 @@ class Recon:
                 except Exception as e:
                     print("Error getting keypoint coordinates: ", e)
                     continue
-        # Dibujamos el resultado
+        # Draw the result
         draw_params = dict(matchColor = (0,255,0), singlePointColor = (255,0,0))
-
+        # Draw the matches in the current frame
         imageMatches = cv.drawMatches(query, train_keyp, frame, test_keyp, good, None, **draw_params)
 
         return imageMatches
-       
-        #plt.title('Matching entre query y frame actual usando descriptor SIFT')
-        #plt.imshow(imageMatches)
-        #plt.show()
-        
 
 """
 import os
