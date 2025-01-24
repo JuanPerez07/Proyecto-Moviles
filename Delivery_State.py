@@ -1,5 +1,4 @@
 #DELIVERY STATE 
-#Library imports
 from smach import State
 import rospy
 from std_msgs.msg import String
@@ -11,13 +10,13 @@ import time
 import subprocess
 import os
 import yaml 
-from Nodo_Interfaz import commands
+from NodoMensajes import commands
 
-#Communication topics
+
+
 USER_TOPIC = "USER_INPUT"
 STATE_TOPIC = "ACTUAL_STATE"
 
-#Subfolder to save the map
 SUBFOLDER = "Maps"
 
 class DeliveryState(State):
@@ -41,18 +40,22 @@ class DeliveryState(State):
 
         # Save the current map
         self.save_map()
-    
+        #print('Introduzca el comando <<Continuar>> para volver al modo de seguimiento \n')
+        #print('Introduzca el comando <<Volver>> para volver a la base')
+
+        
         while not self.Flag:
+            #print('Repartidor en modo espera...\n')
             rate.sleep()
         
         if self.Flag_Continuar:
             self.pub.publish("Following State")
             return 'Following'
-        
         elif self.Flag_Volver:
-            #UNCOMMENT THIS LINE TO USE IN SIMULATION
-            #self.stop_SLAM()
-            #self.prepare_navigation()
+            # STOP SLAM 
+            self.stop_SLAM()
+            #COMENTAR PARA EL ROBOT REAL
+            self.prepare_navigation()
             return 'return home'
 
     # Callback from Subscriber
@@ -116,6 +119,7 @@ class DeliveryState(State):
         try:
             rospy.loginfo("Deteniendo mapeado...")
             # Command to kill RVIZ
+            # Command to stop Rviz, at the moment is optional
             subprocess.call(["killall","-9","rviz"])
             rospy.loginfo("Mapa actualizado exitosamente.")
         except Exception as e:
@@ -131,6 +135,7 @@ class DeliveryState(State):
             # Command to open the map
             subprocess.Popen(["roslaunch", "turtlebot3_navigation", "turtlebot3_navigation.launch","map_file:=/home/nicolas/ProyectoMoviles_ws/src/navigation_stage/src/Maps/mapa.yaml"])
             time.sleep(3)
+            print('****************************************************************************')
             rospy.loginfo("Mapa actualizado exitosamente.")
         except Exception as e:
             rospy.logerr(f"Error en la detención del mapeado: {e}") 
