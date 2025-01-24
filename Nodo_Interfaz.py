@@ -1,8 +1,10 @@
 #!/usr/bin/env python
 
+#Library imports
 import rospy
 from std_msgs.msg import String
 
+#Important communication topics
 USER_TOPIC = "USER_INPUT"
 NODE_NAME = "USER_NODE"
 EXIT_MSG = 'salir'
@@ -10,6 +12,7 @@ STATE_TOPIC = "ACTUAL_STATE"
 CHECK_STATE_MESSAGE = 'state'
 ask_input = False
 State =""
+#Accepted commands by the user
 commands = {'Initial State':'Password','Following State':'Delivery','Delivery State':['Continue','Return'],'Return home':'Return'}
 
 
@@ -56,7 +59,6 @@ def main():
 def print_callback(msg):
     global ask_input
     global State
-    #print('ESTADO ACTUAL -> '+ msg.data)
     ask_input = True
     State = msg.data
 
