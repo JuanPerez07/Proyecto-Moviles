@@ -1,9 +1,3 @@
-
-# Project Title
-
-A brief description of what this project does and who it's for
-
-
 ## Preparación Inicial
 
 Antes de seguir las instrucciones de uso, hay que corroborar que los diferentes archivos están listos para
